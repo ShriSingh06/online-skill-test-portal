@@ -1,82 +1,79 @@
 <?php
-require_once __DIR__ . '/../includes/auth_student.php';
-// Note: We don't include db.php here to minimize DB connection time and rely on session data
-
-$page_title = "Online Skill Test";
-
-// Check if a test is active
-if (!isset($_SESSION['test_active']) || $_SESSION['test_active'] !== true) {
-    header("location: dashboard.php");
+require_once '../config.php';
+if (!isset($_SESSION['student_id'])) {
+    header("Location: ".$base_url."student_login.php");
     exit;
 }
 
-$test_questions = $_SESSION['test_questions'];
-$duration_minutes = $_SESSION['test_duration_minutes'];
-$start_time = $_SESSION['test_start_time'];
-
-// Calculate remaining time
-$elapsed_time = time() - $start_time;
-$total_duration_seconds = $duration_minutes * 60;
-$remaining_time = $total_duration_seconds - $elapsed_time;
-
-// If time has elapsed, auto-submit (should also be handled by JS)
-if ($remaining_time <= 0) {
-    // Redirect to the submission script which will handle the result calculation
-    header("location: submit_test.php?auto=true");
-    exit;
+// Settings
+$duration = 600;
+$numQuestions = 10;
+$res = $conn->query("SELECT test_duration, num_questions FROM admin LIMIT 1");
+if ($res && $row = $res->fetch_assoc()) {
+    $duration = (int)$row['test_duration'];
+    $numQuestions = (int)$row['num_questions'];
 }
 
-// Convert remaining time to minutes for JS timer initialization
-$initial_minutes = ceil($remaining_time / 60);
+// Questions
+$questions = [];
+$qRes = $conn->query("SELECT * FROM questions ORDER BY RAND() LIMIT ".(int)$numQuestions);
+while ($row = $qRes->fetch_assoc()) {
+    $questions[] = $row;
+}
 
-include __DIR__ . '/../includes/header.php';
-// Note: No navbar for a distraction-free test environment
+$_SESSION['test_questions'] = [];
+foreach ($questions as $q) {
+    $_SESSION['test_questions'][$q['id']] = $q['correct_option'];
+}
+
+$pageTitle = "Online Test";
+include '../includes/header.php';
 ?>
-<div class="test-container">
-    <div class="test-header">
-        <h1>Skill Test</h1>
-        <div style="font-size: 1.5rem; font-weight: bold; padding: 10px 15px; border: 2px solid var(--danger-color); border-radius: 4px;">
-            Time Left: <span id="timer" data-duration-minutes="<?php echo $duration_minutes; ?>"><?php echo date('i:s', $remaining_time); ?></span>
-        </div>
+<h2 class="page-title">Online Test</h2>
+
+<?php if (empty($questions)): ?>
+    <div class="alert">No questions available. Contact admin.</div>
+<?php else: ?>
+    <div class="test-header glass-card">
+        <div><strong>Time Left:</strong> <span id="timer"></span></div>
+        <div><strong>Total Questions:</strong> <?php echo count($questions); ?></div>
     </div>
 
-    <form action="submit_test.php" method="post" id="testForm" data-duration-minutes="<?php echo $duration_minutes; ?>">
-        <input type="hidden" name="total_questions" value="<?php echo count($test_questions); ?>">
-        
-        <?php $q_number = 1; ?>
-        <?php foreach ($test_questions as $question): ?>
-            <div class="question-item">
-                <h4><?php echo $q_number; ?>. <?php echo htmlspecialchars($question['text']); ?></h4>
-                <ul class="options-list">
-                    <?php foreach ($question['options'] as $key => $option_text): ?>
-                        <li>
-                            <label>
-                                <input type="radio" 
-                                       name="answer[<?php echo $question['id']; ?>]" 
-                                       value="<?php echo htmlspecialchars($key); ?>"
-                                       required>
-                                <span><?php echo htmlspecialchars($key); ?>: <?php echo htmlspecialchars($option_text); ?></span>
-                            </label>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
+    <form id="testForm" method="post" action="submit_test.php" class="glass-card">
+        <?php foreach ($questions as $i => $q): ?>
+            <div class="question-block">
+                <p class="question-text">
+                    Q<?php echo $i+1; ?>. <?php echo htmlspecialchars($q['question_text']); ?>
+                </p>
+                <div class="options">
+                    <label><input type="radio" name="answers[<?php echo $q['id']; ?>]" value="A"> <?php echo htmlspecialchars($q['option_a']); ?></label>
+                    <label><input type="radio" name="answers[<?php echo $q['id']; ?>]" value="B"> <?php echo htmlspecialchars($q['option_b']); ?></label>
+                    <label><input type="radio" name="answers[<?php echo $q['id']; ?>]" value="C"> <?php echo htmlspecialchars($q['option_c']); ?></label>
+                    <label><input type="radio" name="answers[<?php echo $q['id']; ?>]" value="D"> <?php echo htmlspecialchars($q['option_d']); ?></label>
+                </div>
             </div>
-            <?php $q_number++; ?>
         <?php endforeach; ?>
 
-        <div class="form-group" style="margin-top: 40px; text-align: center;">
-            <button type="submit" class="btn btn-success btn-lg">Submit Test and View Result</button>
-        </div>
+        <button type="submit" class="btn primary">Submit Test</button>
     </form>
-</div>
 
-<script src="/online-skill-test-portal/assets/js/timer.js"></script>
+    <script>
+        let duration = <?php echo (int)$duration; ?>; // seconds
+        function tick() {
+            let m = Math.floor(duration / 60);
+            let s = duration % 60;
+            document.getElementById('timer').textContent =
+                String(m).padStart(2,'0') + ":" + String(s).padStart(2,'0');
 
-<?php 
-// Instead of the standard footer, just output the closing tags for a focused test view
-if (isset($conn)) {
-    close_db_connection($conn);
-}
-?>
-</div> </body>
-</html>
+            if (duration <= 0) {
+                document.getElementById('testForm').submit();
+            } else {
+                duration--;
+                setTimeout(tick, 1000);
+            }
+        }
+        tick();
+    </script>
+<?php endif; ?>
+
+<?php include '../includes/footer.php'; ?>

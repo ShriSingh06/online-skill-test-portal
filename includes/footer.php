@@ -1,8 +1,10 @@
-</div> </body>
+    </div>
+</main>
+
+<footer class="glass-footer">
+    <div class="container footer-inner">
+        <p>&copy; <?php echo date('Y'); ?> Online Student Skill Testing & Result Portal</p>
+    </div>
+</footer>
+</body>
 </html>
-<?php
-// Close the database connection at the end of the script execution
-if (isset($conn)) {
-    close_db_connection($conn);
-}
-?>
